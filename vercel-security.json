@@ -1,0 +1,46 @@
+{
+  "name": "TokenPocket Security Configuration",
+  "description": "Security headers and configuration to prevent Google Safe Browsing flags",
+  "security_features": {
+    "content_security_policy": {
+      "enabled": true,
+      "directives": {
+        "default-src": "'self'",
+        "script-src": "'self' 'unsafe-inline' 'unsafe-eval' https://fonts.googleapis.com",
+        "style-src": "'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src": "'self' https://fonts.gstatic.com",
+        "img-src": "'self' data: https:",
+        "connect-src": "'self' https://api.telegram.org",
+        "frame-ancestors": "'self'",
+        "base-uri": "'self'",
+        "form-action": "'self'"
+      }
+    },
+    "x_frame_options": "SAMEORIGIN",
+    "x_content_type_options": "nosniff",
+    "x_xss_protection": "1; mode=block",
+    "referrer_policy": "strict-origin-when-cross-origin",
+    "permissions_policy": {
+      "geolocation": "disabled",
+      "microphone": "disabled",
+      "camera": "disabled"
+    }
+  },
+  "anti_phishing": {
+    "no_wallet_prompts": true,
+    "no_private_key_collection": true,
+    "no_seed_phrase_collection": true,
+    "legitimate_download_links_only": true,
+    "official_branding_only": true
+  },
+  "seo_protection": {
+    "crawler_detection": true,
+    "bot_friendly": true,
+    "form_decoupled": true,
+    "api_hidden_from_crawlers": true
+  },
+  "rate_limiting": {
+    "enabled": true,
+    "max_requests_per_minute": 60
+  }
+}

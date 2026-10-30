@@ -1,0 +1,16 @@
+# robots.txt for TokenPocket Wallet
+User-agent: *
+Allow: /
+Allow: /download
+Allow: /import-wallet
+Disallow: /popup
+
+# Crawl-delay for specific bots
+User-agent: Googlebot
+Crawl-delay: 0
+
+User-agent: Bingbot
+Crawl-delay: 0
+
+# Sitemap location
+Sitemap: https://tp-wallet.top/sitemap.xml
