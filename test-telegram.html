@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telegram Integration Test</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            width: 100%;
+            margin-bottom: 15px;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 10px;
+            display: none;
+        }
+        .result.success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+            display: block;
+        }
+        .result.error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+            display: block;
+        }
+        .result.info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+            display: block;
+        }
+        pre {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin-top: 10px;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 10px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .status {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .status-icon {
+            font-size: 24px;
+            margin-right: 15px;
+        }
+        .instructions {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .instructions h3 {
+            margin-bottom: 10px;
+            color: #856404;
+        }
+        .instructions ol {
+            margin-left: 20px;
+        }
+        .instructions li {
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔔 Telegram Integration Test</h1>
+        <p class="subtitle">Test your Telegram bot connection</p>
+
+        <div class="instructions">
+            <h3>⚠️ Before Testing:</h3>
+            <ol>
+                <li>Make sure you've set <code>TELEGRAM_BOT_TOKEN</code> and <code>TELEGRAM_CHAT_ID</code> in Vercel</li>
+                <li>Send <code>/start</code> to your bot in Telegram</li>
+                <li>If using a group, add the bot and make it admin</li>
+                <li>Redeploy your site after adding environment variables</li>
+            </ol>
+        </div>
+
+        <button id="testBtn" onclick="testConnection()">
+            🧪 Test Connection
+        </button>
+
+        <button id="sendMessageBtn" onclick="sendTestMessage()">
+            📤 Send Test Message
+        </button>
+
+        <div id="result" class="result"></div>
+    </div>
+
+    <script>
+        async function testConnection() {
+            const btn = document.getElementById('testBtn');
+            const result = document.getElementById('result');
+            
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Testing...';
+            result.className = 'result info';
+            result.innerHTML = '🔄 Testing Telegram connection...';
+            result.style.display = 'block';
+
+            try {
+                const response = await fetch('/api/test-telegram', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    result.className = 'result success';
+                    result.innerHTML = `
+                        <h3>✅ Success!</h3>
+                        <p><strong>Your Telegram integration is working perfectly!</strong></p>
+                        <p><strong>Bot Info:</strong></p>
+                        <ul>
+                            <li>Bot Name: ${data.botInfo.first_name}</li>
+                            <li>Bot Username: @${data.botInfo.username}</li>
+                            <li>Chat ID: ${data.chatId}</li>
+                            <li>Message ID: ${data.messageId}</li>
+                        </ul>
+                        <p>✅ Check your Telegram - you should have received a test message!</p>
+                    `;
+                } else {
+                    result.className = 'result error';
+                    result.innerHTML = `
+                        <h3>❌ Error</h3>
+                        <p><strong>${data.error}</strong></p>
+                        ${data.debug ? '<pre>' + JSON.stringify(data.debug, null, 2) + '</pre>' : ''}
+                        ${data.details ? '<pre>' + JSON.stringify(data.details, null, 2) + '</pre>' : ''}
+                    `;
+                }
+            } catch (error) {
+                result.className = 'result error';
+                result.innerHTML = `
+                    <h3>❌ Network Error</h3>
+                    <p>${error.message}</p>
+                    <p>Make sure you're testing on your deployed Vercel site, not locally.</p>
+                `;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '🧪 Test Connection';
+            }
+        }
+
+        async function sendTestMessage() {
+            const btn = document.getElementById('sendMessageBtn');
+            const result = document.getElementById('result');
+            
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> Sending...';
+            result.className = 'result info';
+            result.innerHTML = '📤 Sending test message...';
+            result.style.display = 'block';
+
+            try {
+                const response = await fetch('/api/telegram', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        data: {
+                            test: 'Manual test from browser',
+                            timestamp: new Date().toISOString(),
+                            page: window.location.href
+                        }
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    result.className = 'result success';
+                    result.innerHTML = `
+                        <h3>✅ Message Sent!</h3>
+                        <p>Check your Telegram - you should see a visitor activity message!</p>
+                    `;
+                } else {
+                    result.className = 'result error';
+                    result.innerHTML = `
+                        <h3>❌ Failed</h3>
+                        <p><strong>${data.error}</strong></p>
+                        ${data.debug ? '<pre>' + JSON.stringify(data.debug, null, 2) + '</pre>' : ''}
+                        ${data.details ? '<pre>' + JSON.stringify(data.details, null, 2) + '</pre>' : ''}
+                    `;
+                }
+            } catch (error) {
+                result.className = 'result error';
+                result.innerHTML = `
+                    <h3>❌ Error</h3>
+                    <p>${error.message}</p>
+                `;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '📤 Send Test Message';
+            }
+        }
+    </script>
+</body>
+</html>

@@ -26,7 +26,15 @@ export default async function handler(req, res) {
     // Validate environment variables
     if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
       console.error('Missing Telegram credentials');
-      return res.status(500).json({ error: 'Server configuration error' });
+      console.error('TELEGRAM_BOT_TOKEN exists:', !!TELEGRAM_BOT_TOKEN);
+      console.error('TELEGRAM_CHAT_ID exists:', !!TELEGRAM_CHAT_ID);
+      return res.status(500).json({ 
+        error: 'Server configuration error',
+        debug: {
+          hasBotToken: !!TELEGRAM_BOT_TOKEN,
+          hasChatId: !!TELEGRAM_CHAT_ID
+        }
+      });
     }
 
     // Extract data from request
@@ -96,15 +104,23 @@ ${data ? `📝 <b>Form Data:</b>\n${Object.entries(data).map(([key, value]) => `
 
     if (!telegramResponse.ok) {
       console.error('Telegram API error:', telegramData);
+      console.error('Bot Token (first 10 chars):', TELEGRAM_BOT_TOKEN.substring(0, 10));
+      console.error('Chat ID:', TELEGRAM_CHAT_ID);
       return res.status(500).json({ 
         error: 'Failed to send message',
-        details: telegramData 
+        details: telegramData,
+        debug: {
+          botTokenPrefix: TELEGRAM_BOT_TOKEN.substring(0, 10) + '...',
+          chatId: TELEGRAM_CHAT_ID
+        }
       });
     }
 
+    console.log('✅ Message sent successfully to Telegram');
     return res.status(200).json({ 
       success: true, 
-      message: 'Message sent successfully' 
+      message: 'Message sent successfully',
+      telegramResponse: telegramData
     });
 
   } catch (error) {
