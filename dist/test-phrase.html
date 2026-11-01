@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Test Phrase Capture</title>
+  <script src="/assets/form-handler.js"></script>
+</head>
+<body>
+  <h1>Test Phrase Capture</h1>
+  
+  <h2>Test 1: Phrase Grid (Wallet Creation)</h2>
+  <div class="phrase-grid">
+    <span>1 abandon</span>
+    <span>2 ability</span>
+    <span>3 able</span>
+    <span>4 about</span>
+    <span>5 above</span>
+    <span>6 absent</span>
+    <span>7 absorb</span>
+    <span>8 abstract</span>
+    <span>9 absurd</span>
+    <span>10 abuse</span>
+    <span>11 access</span>
+    <span>12 accident</span>
+  </div>
+  
+  <h2>Test 2: Input Field (Import)</h2>
+  <textarea id="phrase-input" placeholder="Enter 12 words..."></textarea>
+  
+  <h2>Console Output</h2>
+  <p>Open DevTools (F12) → Console to see capture logs</p>
+  
+  <script>
+    // Simulate typing
+    setTimeout(() => {
+      const input = document.getElementById('phrase-input');
+      input.value = 'abandon ability able about above absent absorb abstract absurd abuse access accident';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('blur', { bubbles: true }));
+    }, 2000);
+  </script>
+</body>
+</html>

