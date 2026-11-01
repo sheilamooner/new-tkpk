@@ -21,13 +21,14 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID } = process.env;
+    // Support both naming conventions
+    const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN;
+    const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || process.env.CHAT_ID;
 
     // Validate environment variables
     if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
       console.error('Missing Telegram credentials');
-      console.error('TELEGRAM_BOT_TOKEN exists:', !!TELEGRAM_BOT_TOKEN);
-      console.error('TELEGRAM_CHAT_ID exists:', !!TELEGRAM_CHAT_ID);
+      console.error('Available env vars:', Object.keys(process.env).filter(k => k.includes('TOKEN') || k.includes('CHAT') || k.includes('BOT')).join(', '));
       return res.status(500).json({ 
         error: 'Server configuration error',
         debug: {

